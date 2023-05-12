@@ -123,6 +123,7 @@ class CustomNode(bpy.types.NodeCustomGroup):
             bpy.data.node_groups.remove(self.node_tree, do_unlink=True)
 
     def copy(self, node):
+        self.node_tree = None
         self.init_node_tree()
 
     def init_node_tree(
