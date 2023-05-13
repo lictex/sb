@@ -33,7 +33,7 @@ class SDIMG2IMGProperty(bpy.types.PropertyGroup):
         name="Mask Blur",
         min=0,
         max=64,
-        default=32,
+        default=4,
     )
     inpainting_fill: bpy.props.EnumProperty(
         name="Fill",
