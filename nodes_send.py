@@ -3,6 +3,7 @@ import re
 import os
 import io
 import json
+import numpy
 import tempfile
 import base64
 import threading
@@ -589,6 +590,23 @@ class SendToSD(utils.NodeOperator):
                         else:
                             image = bpy.data.images.load(path)
                             image.name = name
+
+                        if image.depth != 32:  # convert results to rgba8
+                            old_image = image
+                            old_image.name += "__tmp"
+                            image = bpy.data.images.new(
+                                name=name,
+                                width=image.size[0],
+                                height=image.size[1],
+                                alpha=True,
+                                float_buffer=False,
+                            )
+
+                            # with numpy this is faster
+                            image.pixels = numpy.array(old_image.pixels)
+
+                            old_image.user_remap(image)
+                            bpy.data.images.remove(old_image)
 
                         if i < len(info["infotexts"]):
                             sd_info = {
