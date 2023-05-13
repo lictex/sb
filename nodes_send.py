@@ -821,7 +821,7 @@ class SendToSD(utils.NodeOperator):
                         ).decode('utf-8'),
                         "mask_blur": img2img.mask_blur,
                         "inpainting_fill": int(img2img.inpainting_fill),
-                        "inpaint_full_res": int(img2img.inpainting_fill),
+                        "inpaint_full_res": img2img.inpaint_full_res,
                     })
                     if not img2img.inpaint_full_res:
                         req.update({
