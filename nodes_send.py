@@ -145,7 +145,12 @@ class SDProperty(bpy.types.PropertyGroup):
         default=-1
     )
 
-    subseed_strength: bpy.props.IntProperty(name="Subseed Strength")
+    subseed_strength: bpy.props.FloatProperty(
+        name="Subseed Strength",
+        min=0,
+        max=1,
+        default=0,
+    )
     seed_resize_from_h: utils.RoundedIntProperty(
         id="seed_resize_from_h",
         name="Resize Seed Height",
