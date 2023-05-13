@@ -46,10 +46,7 @@ class SDIMG2IMGProperty(bpy.types.PropertyGroup):
             ])
         ],
     )
-    inpaint_full_res: bpy.props.BoolProperty(
-        name="Full",
-        default=True,
-    )
+    inpaint_full_res: bpy.props.BoolProperty(name="Only Masked")
     inpaint_full_res_padding: utils.RoundedIntProperty(
         id="inpaint_full_res_padding",
         name="Padding",
@@ -424,7 +421,7 @@ class CompositorNodeSend(utils.CustomCompositorNode):
                 box = box.box().column()
                 l = box.split(factor=0.333)
                 l.prop(self.img2img, "inpaint_full_res")
-                if not self.img2img.inpaint_full_res:
+                if self.img2img.inpaint_full_res:
                     l.prop(self.img2img, "inpaint_full_res_padding")
                 box.prop(self.img2img, "mask_blur")
                 box.prop(self.img2img, "inpainting_fill")
@@ -823,7 +820,7 @@ class SendToSD(utils.NodeOperator):
                         "inpainting_fill": int(img2img.inpainting_fill),
                         "inpaint_full_res": img2img.inpaint_full_res,
                     })
-                    if not img2img.inpaint_full_res:
+                    if img2img.inpaint_full_res:
                         req.update({
                             "inpaint_full_res_padding": img2img.inpaint_full_res_padding,
                         })
