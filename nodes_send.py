@@ -226,7 +226,6 @@ class ControlNetPassProperty(bpy.types.PropertyGroup):
         ],
     )
 
-    use_preprocessor: bpy.props.BoolProperty(name="Use Preprocessor")
     module_s: utils.EnumStringStoreProperty()
     module: utils.EnumStringProperty(
         sid="module_s",
@@ -253,6 +252,37 @@ class ControlNetPassProperty(bpy.types.PropertyGroup):
         name="B",
         default=1,
     )
+
+
+class TiledVAEProperty(bpy.types.PropertyGroup):
+    enabled: bpy.props.BoolProperty(name="Enabled")
+    encoder_tile_size: utils.RoundedIntProperty(
+        id="encoder_tile_size",
+        name="Encoder Tile Size",
+        min=256,
+        max=4096,
+        default=960,
+    )
+    decoder_tile_size: utils.RoundedIntProperty(
+        id="decoder_tile_size",
+        name="Decoder Tile Size",
+        min=48,
+        max=512,
+        default=64,
+    )
+    vae_to_gpu: bpy.props.BoolProperty(
+        name="Move VAE to GPU",
+        default=True,
+    )
+    fast_decoder: bpy.props.BoolProperty(
+        name="Fast Decoder",
+        default=True,
+    )
+    fast_encoder: bpy.props.BoolProperty(
+        name="Fast Encoder",
+        default=True,
+    )
+    color_fix: bpy.props.BoolProperty(name="Color Fix")
 
 
 class ControlNetPassList(bpy.types.UIList):
@@ -374,50 +404,18 @@ class CompositorNodeSend(utils.CustomCompositorNode):
     control_net_passes: bpy.props.CollectionProperty(
         type=ControlNetPassProperty,
     )
+    tiled_vae: bpy.props.PointerProperty(type=TiledVAEProperty)
     active_control_net_pass_index: bpy.props.IntProperty()
 
     def draw_buttons_ext(self, context, layout):
         layout = layout.column()
 
-        layout.prop(self.sd, "prompt")
-        layout.prop(self.sd, "negative_prompt")
+        r = layout.column(align=True)
+        r.prop(self.sd, "prompt")
+        r.prop(self.sd, "negative_prompt")
 
         r = layout.column(align=True)
-
-        x = r.split(factor=0.5, align=True)
-        x.prop(self.sd, "width")
-        x.prop(self.sd, "height")
-
-        r.prop(self.sd, "sampler_name", text="")
-        r.prop(self.sd, "denoising_strength")
-
-        x = r.split(factor=0.5, align=True)
-        x.prop(self.sd, "steps")
-        x.prop(self.sd, "cfg_scale")
-
-        x = r.split(factor=0.5, align=True)
-        x.prop(self.sd, "batch_size")
-        x.prop(self.sd, "n_iter")
-
-        layout.label(text="Seed:")
-
-        r = layout.column(align=True)
-        x = r.split(factor=0.666, align=True)
-        x.prop(self.sd, "seed", text="")
-        x.prop(self.sd, "seed_extras", toggle=True)
-        if self.sd.seed_extras:
-            box = r.box().column(align=True)
-            x = box.split(factor=0.5, align=True)
-            x.prop(self.sd, "subseed", text="")
-            x.prop(self.sd, "subseed_strength")
-            x = box.split(factor=0.5, align=True)
-            x.prop(self.sd, "seed_resize_from_w")
-            x.prop(self.sd, "seed_resize_from_h")
-
-        layout.label(text="Mode:")
-
-        r = layout.column(align=True)
-        r.row().prop(self, "ty", expand=True)
+        r.row(align=True).prop(self, "ty", expand=True)
         box = r.box().column()
         if self.ty == "IMAGE":
             box.prop(self.img2img, "resize_mode")
@@ -441,6 +439,33 @@ class CompositorNodeSend(utils.CustomCompositorNode):
                 x.prop(self.txt2img, "hr_resize_x")
                 x.prop(self.txt2img, "hr_resize_y")
 
+        x = r.split(factor=0.5, align=True)
+        x.prop(self.sd, "width")
+        x.prop(self.sd, "height")
+
+        r.prop(self.sd, "sampler_name", text="")
+        r.prop(self.sd, "denoising_strength")
+
+        x = r.split(factor=0.5, align=True)
+        x.prop(self.sd, "steps")
+        x.prop(self.sd, "cfg_scale")
+
+        x = r.split(factor=0.5, align=True)
+        x.prop(self.sd, "batch_size")
+        x.prop(self.sd, "n_iter")
+
+        x = r.split(factor=0.666, align=True)
+        x.prop(self.sd, "seed", text="")
+        x.prop(self.sd, "seed_extras", toggle=True)
+        if self.sd.seed_extras:
+            box = r.box().column(align=True)
+            x = box.split(factor=0.5, align=True)
+            x.prop(self.sd, "subseed", text="")
+            x.prop(self.sd, "subseed_strength")
+            x = box.split(factor=0.5, align=True)
+            x.prop(self.sd, "seed_resize_from_w")
+            x.prop(self.sd, "seed_resize_from_h")
+        layout.separator()
         layout.label(text="ControlNet:")
 
         r = layout.row()
@@ -461,34 +486,60 @@ class CompositorNodeSend(utils.CustomCompositorNode):
 
         # check if the active index is valid
         if ControlNetPassRemove.poll(context):
-            col = layout.column(align=True)
             control_net = self.control_net_passes[self.active_control_net_pass_index]
-            x = col.split()
+
+            x = layout.split(align=True)
             x.prop(control_net, "srgb")
             x.prop(control_net, "use_mask")
-            col.prop(control_net, "model")
-            col.prop(control_net, "control_mode")
-            col.prop(control_net, "resize_mode")
+            x.prop(control_net, "lowvram")
+
+            col = layout.column(align=True)
+
+            def split_prop(o, p, t):  # to align preprocessor settings
+                x = col.split(factor=0.25, align=True)
+                x.label(text=f"{t}:")
+                x.prop(o, p, text="")
+
+            split_prop(control_net, "model", "Model")
+            split_prop(control_net, "control_mode", "Control Mode")
+            split_prop(control_net, "resize_mode", "Resize Mode")
+            split_prop(control_net, "module", "Preprocessor")
+
+            if control_net.module != "none":
+                x = col.split(factor=0.25, align=True)
+                x.column()
+                box = x.box().column(align=True)
+                r = box.row(align=True)
+                r.prop(control_net, "pixel_perfect")
+                if not control_net.pixel_perfect:
+                    r.prop(control_net, "processor_res")
+                x = box.split(factor=0.5, align=True)
+                x.prop(control_net, "threshold_a")
+                x.prop(control_net, "threshold_b")
 
             r = layout.column(align=True)
-            x = r.split(factor=0.666, align=True)
-            x.prop(control_net, "weight")
-            x.prop(control_net, "lowvram", toggle=True)
+            r.prop(control_net, "weight")
             x = r.split(factor=0.5, align=True)
             x.prop(control_net, "guidance_start")
             x.prop(control_net, "guidance_end")
 
-            layout.prop(control_net, "use_preprocessor")
-            if control_net.use_preprocessor:
-                layout.prop(control_net, "module")
-                layout.prop(control_net, "pixel_perfect")
-                if not control_net.pixel_perfect:
-                    layout.prop(control_net, "processor_res")
-                x = layout.split(factor=0.5, align=True)
-                x.prop(control_net, "threshold_a")
-                x.prop(control_net, "threshold_b")
-
-        pass
+        layout.separator()
+        r = layout.row()
+        r.label(text="Tiled VAE:")
+        r.prop(self.tiled_vae, "enabled")
+        if self.tiled_vae.enabled:
+            box = layout.box().column()
+            c = box.column(align=True)
+            x = c.split(align=True)
+            x.prop(self.tiled_vae, "decoder_tile_size")
+            x.prop(self.tiled_vae, "encoder_tile_size")
+            c = box.split()
+            c.prop(self.tiled_vae, "fast_decoder")
+            c.prop(self.tiled_vae, "fast_encoder")
+            c = box.split()
+            c.prop(self.tiled_vae, "vae_to_gpu")
+            if self.tiled_vae.fast_encoder:
+                c.prop(self.tiled_vae, "color_fix")
 
     def draw_buttons(self, context, layout):
         if self.progress >= 0:
@@ -718,7 +769,7 @@ class SendToSD(utils.NodeOperator):
                                 ), 'rb').read()
                             ).decode('utf-8'),
                         })
-                    if cnet.use_preprocessor:
+                    if cnet.module != "none":
                         cnet_req.update({
                             "module": cnet.module,
                             "pixel_perfect": cnet.pixel_perfect,
@@ -732,6 +783,20 @@ class SendToSD(utils.NodeOperator):
                     "controlnet": {
                         "args": cnet_req_list
                     }
+                })
+            if node.tiled_vae.enabled:
+                req["alwayson_scripts"].update({
+                    "Tiled VAE": {
+                        "args": [
+                            True,
+                            node.tiled_vae.encoder_tile_size,
+                            node.tiled_vae.decoder_tile_size,
+                            node.tiled_vae.vae_to_gpu,
+                            node.tiled_vae.fast_decoder,
+                            node.tiled_vae.fast_encoder,
+                            node.tiled_vae.color_fix,
+                        ],
+                    },
                 })
             if node.ty == "IMAGE":
                 img2img: SDIMG2IMGProperty = node.img2img
@@ -792,7 +857,7 @@ class SendToSD(utils.NodeOperator):
 
 classes = [
     SDProperty, SDIMG2IMGProperty, SDTXT2IMGProperty,
-    ControlNetPassProperty,
+    ControlNetPassProperty, TiledVAEProperty,
     ControlNetPassList,
     ControlNetPassAdd, ControlNetPassRemove,
     ControlNetPassMoveUp, ControlNetPassMoveDown,
